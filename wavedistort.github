@@ -1,0 +1,52 @@
+name: Build NTS-3 units
+
+on:
+  workflow_dispatch:          # lets you start it with the "Run workflow" button
+  push:
+    paths:
+      - "fumio/**"
+      - "wavedistort/**"
+      - ".github/workflows/build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false        # one unit failing does not stop the other
+      matrix:
+        include:
+          - folder: fumio
+            product: fumio
+          - folder: wavedistort
+            product: st_wavedistort
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Korg's logue SDK (pinned to the revision this project was written against)
+        run: |
+          mkdir sdk && cd sdk
+          git init -q
+          git remote add origin https://github.com/korginc/logue-sdk
+          git fetch -q --depth 1 origin e78b16c6068b1c30fc072f2aebb8da5eef6c005c
+          git checkout -q FETCH_HEAD
+          git submodule update --init --depth 1 platform/ext/CMSIS
+
+      - name: Download the ARM compiler the SDK expects (GCC 10.3-2021.10)
+        run: |
+          cd sdk/tools/gcc
+          ./get_gcc_10_3-2021_10_linux.sh
+
+      - name: Build the unit
+        run: |
+          cp -r ${{ matrix.folder }} sdk/platform/nts-3_kaoss/${{ matrix.folder }}
+          cd sdk/platform/nts-3_kaoss/${{ matrix.folder }}
+          make -j2
+          make install
+          ls -l ${{ matrix.product }}.nts3unit
+
+      - name: Keep the result
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.product }}-nts3unit
+          path: sdk/platform/nts-3_kaoss/${{ matrix.folder }}/${{ matrix.product }}.nts3unit
+          if-no-files-found: error
